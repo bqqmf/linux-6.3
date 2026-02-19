@@ -28,6 +28,7 @@
 #include <linux/mm_inline.h>
 #include <linux/page_ext.h>
 #include <linux/page_owner.h>
+#include <linux/memory-tiers.h>
 
 #include "internal.h"
 
@@ -1667,7 +1668,9 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 							struct zone *zone)
 {
 	int i;
-	seq_printf(m, "Node %d, zone %8s", pgdat->node_id, zone->name);
+	seq_printf(m, "Node %d, zone %8s, toptier %d next_demotion_node %d",
+            pgdat->node_id, zone->name, (pgdat->node_id == 0),
+            next_demotion_node(pgdat->node_id));
 	if (is_zone_first_populated(pgdat, zone)) {
 		seq_printf(m, "\n  per-node stats");
 		for (i = 0; i < NR_VM_NODE_STAT_ITEMS; i++) {
