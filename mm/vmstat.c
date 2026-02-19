@@ -1283,6 +1283,9 @@ const char * const vmstat_text[] = {
 	"pgscan_file",
 	"pgsteal_anon",
 	"pgsteal_file",
+    "aging_func_success",
+    "aging_func_fail",
+    "aging_func_count",
 
 #ifdef CONFIG_NUMA
 	"zone_reclaim_failed",

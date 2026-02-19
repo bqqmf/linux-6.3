@@ -4423,6 +4423,7 @@ static void inc_max_seq(struct lruvec *lruvec, bool can_swap, bool force_scan)
 static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
 			       struct scan_control *sc, bool can_swap, bool force_scan)
 {
+    count_vm_event(AGING_FUNC_COUNT);
 	bool success;
 	struct lru_gen_mm_walk *walk;
 	struct mm_struct *mm = NULL;
@@ -4470,6 +4471,7 @@ done:
 		if (sc->priority <= DEF_PRIORITY - 2)
 			wait_event_killable(lruvec->mm_state.wait,
 					    max_seq < READ_ONCE(lrugen->max_seq));
+        count_vm_event(AGING_FUNC_FAIL);
 		return false;
 	}
 
@@ -4480,6 +4482,7 @@ done:
 	if (wq_has_sleeper(&lruvec->mm_state.wait))
 		wake_up_all(&lruvec->mm_state.wait);
 
+    count_vm_event(AGING_FUNC_SUCCESS);
 	return true;
 }
 
