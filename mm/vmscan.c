@@ -1631,6 +1631,7 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
 		      &nr_succeeded);
 
 	__count_vm_events(PGDEMOTE_KSWAPD + reclaimer_offset(), nr_succeeded);
+    count_vm_event(PGDEMOTE_COUNT);
 
 	return nr_succeeded;
 }
