@@ -241,6 +241,7 @@ static struct memory_tier *__node_get_memory_tier(int node)
 #ifdef CONFIG_MIGRATION
 bool node_is_toptier(int node)
 {
+    /*
 	bool toptier;
 	pg_data_t *pgdat;
 	struct memory_tier *memtier;
@@ -262,6 +263,9 @@ bool node_is_toptier(int node)
 out:
 	rcu_read_unlock();
 	return toptier;
+    */
+    // in TPP
+    return (node == 0);
 }
 
 void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
@@ -448,6 +452,11 @@ static void establish_demotion_targets(void)
 		nodes_andnot(lower_tier, lower_tier, tier_nodes);
 		memtier->lower_tier_mask = lower_tier;
 	}
+
+    if (node_state(0, N_MEMORY) && node_state(1, N_MEMORY)) {
+        node_demotion[0].preferred = NODE_MASK_NONE;
+        node_set(1, node_demotion[0].preferred);
+    }
 }
 
 #else
