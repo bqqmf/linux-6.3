@@ -3987,6 +3987,9 @@ restart:
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
 
+        if (folio_test_anon(folio) && lru_gen_enable())
+            folio_inc_refs(folio);
+
 		old_gen = folio_update_gen(folio, new_gen);
 		if (old_gen >= 0 && old_gen != new_gen)
 			update_batch_size(walk, folio, old_gen, new_gen);
@@ -4068,6 +4071,9 @@ static void walk_pmd_range_locked(pud_t *pud, unsigned long addr, struct vm_area
 		    !(folio_test_anon(folio) && folio_test_swapbacked(folio) &&
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
+
+        if (folio_test_anon(folio) && lru_gen_enable())
+            folio_inc_refs(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
 		if (old_gen >= 0 && old_gen != new_gen)
@@ -4662,6 +4668,9 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 		    !(folio_test_anon(folio) && folio_test_swapbacked(folio) &&
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
+        
+        if (folio_test_anon(folio) && lru_gen_enable())
+            folio_inc_refs(folio);
 
 		if (walk) {
 			old_gen = folio_update_gen(folio, new_gen);
