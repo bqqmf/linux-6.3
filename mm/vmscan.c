@@ -1605,6 +1605,15 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
 	unsigned int nr_succeeded;
 	nodemask_t allowed_mask;
 
+    struct folio *folio;
+    struct lruvec *lruvec;
+    struct lru_gen_folio *lrugen;
+    int tier_attempted[MAX_NR_TIERS] = {0};
+    int tier_failed[MAX_NR_TIERS] = {0};
+    int i;
+    int type;
+    unsigned long min_seq;
+
 	struct migration_target_control mtc = {
 		/*
 		 * Allocate from 'node', or fail quickly and quietly.
@@ -1625,10 +1634,36 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
 
 	node_get_allowed_targets(pgdat, &allowed_mask);
 
+    folio = list_first_entry(demote_folios, struct folio, lru);
+    lruvec = folio_lruvec(folio);
+    lrugen = &lruvec->lrugen;
+
+    // to insert min_seq in hashtable
+    type = folio_is_file_lru(folio);
+    min_seq = READ_ONCE(lrugen->min_seq[type]);
+
+    // TODO: add key: (mapping, index), value: min_seq
+
+    list_for_each_entry(folio, demote_folios, lru) {
+        int refs = folio_lru_refs(folio);
+        tier_attempted[lru_tier_from_refs(refs)]++;
+    }
+
 	/* Demotion ignores all cpuset and mempolicy settings */
 	migrate_pages(demote_folios, alloc_demote_page, NULL,
 		      (unsigned long)&mtc, MIGRATE_ASYNC, MR_DEMOTION,
 		      &nr_succeeded);
+
+    list_for_each_entry(folio, demote_folios, lru) {
+        int refs = folio_lru_refs(folio);
+        tier_failed[lru_tier_from_refs(refs)]++;
+    }
+
+    for (i = 0; i < MAX_NR_TIERS; i++) {
+        unsigned int succeeded_in_tier = tier_attempted[i] - tier_failed[i];
+        if (succeeded_in_tier > 0)
+            atomic_long_add(succeeded_in_tier, &lrugen->demoted[i]);
+    }
 
 	__count_vm_events(PGDEMOTE_KSWAPD + reclaimer_offset(), nr_succeeded);
     count_vm_event(PGDEMOTE_COUNT);

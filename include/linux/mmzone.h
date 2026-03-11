@@ -427,6 +427,9 @@ struct lru_gen_folio {
 	atomic_long_t refaulted[NR_HIST_GENS][ANON_AND_FILE][MAX_NR_TIERS];
 	/* whether the multi-gen LRU is enabled */
 	bool enabled;
+
+	atomic_long_t demoted[MAX_NR_TIERS];
+	atomic_long_t promoted[MAX_NR_TIERS];
 #ifdef CONFIG_MEMCG
 	/* the memcg generation this lru_gen_folio belongs to */
 	u8 gen;

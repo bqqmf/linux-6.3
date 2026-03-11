@@ -2586,6 +2586,14 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	LIST_HEAD(migratepages);
 	int nr_pages = thp_nr_pages(page);
 
+    struct folio *folio = page_folio(page);
+    struct lruvec *lruvec;
+    struct lru_gen_folio *lrugen;
+    int tier;
+    // dmesg
+    int i;
+    long val_demoted, val_promoted, promo_rate;
+
 	/*
 	 * Don't migrate file pages that are mapped in multiple processes
 	 * with execute permissions as they are probably shared libraries.
@@ -2605,6 +2613,10 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	if (!isolated)
 		goto out;
 
+    lruvec = folio_lruvec(folio);
+    lrugen = &lruvec->lrugen;
+    tier = lru_tier_from_refs(folio_lru_refs(folio));
+
 	list_add(&page->lru, &migratepages);
 	nr_remaining = migrate_pages(&migratepages, alloc_misplaced_dst_page,
 				     NULL, node, MIGRATE_ASYNC,
@@ -2620,9 +2632,12 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	}
 	if (nr_succeeded) {
 		count_vm_numa_events(NUMA_PAGE_MIGRATE, nr_succeeded);
-		if (!node_is_toptier(page_to_nid(page)) && node_is_toptier(node))
+		if (!node_is_toptier(page_to_nid(page)) && node_is_toptier(node)) {
 			mod_node_page_state(pgdat, PGPROMOTE_SUCCESS,
 					    nr_succeeded);
+
+            atomic_long_add(nr_succeeded, &lrugen->promoted[tier]);
+        }
 	}
 	BUG_ON(!list_empty(&migratepages));
 	return isolated;
