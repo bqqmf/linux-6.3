@@ -68,6 +68,8 @@
 #include "internal.h"
 #include "swap.h"
 
+#include "demotion_hash.h"
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
 
@@ -1611,8 +1613,6 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
     int tier_attempted[MAX_NR_TIERS] = {0};
     int tier_failed[MAX_NR_TIERS] = {0};
     int i;
-    int type;
-    unsigned long min_seq;
 
 	struct migration_target_control mtc = {
 		/*
@@ -1638,15 +1638,11 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
     lruvec = folio_lruvec(folio);
     lrugen = &lruvec->lrugen;
 
-    // to insert min_seq in hashtable
-    type = folio_is_file_lru(folio);
-    min_seq = READ_ONCE(lrugen->min_seq[type]);
-
-    // TODO: add key: (mapping, index), value: min_seq
-
     list_for_each_entry(folio, demote_folios, lru) {
         int refs = folio_lru_refs(folio);
         tier_attempted[lru_tier_from_refs(refs)]++;
+
+		record_demotion_history(folio, lrugen);
     }
 
 	/* Demotion ignores all cpuset and mempolicy settings */
@@ -4022,7 +4018,7 @@ restart:
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
 
-        if (folio_test_anon(folio) && lru_gen_enable())
+        if (folio_test_anon(folio) && lru_gen_enabled())
             folio_inc_refs(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
@@ -4107,7 +4103,7 @@ static void walk_pmd_range_locked(pud_t *pud, unsigned long addr, struct vm_area
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
 
-        if (folio_test_anon(folio) && lru_gen_enable())
+        if (folio_test_anon(folio) && lru_gen_enabled())
             folio_inc_refs(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
@@ -4704,7 +4700,7 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
         
-        if (folio_test_anon(folio) && lru_gen_enable())
+        if (folio_test_anon(folio) && lru_gen_enabled())
             folio_inc_refs(folio);
 
 		if (walk) {
