@@ -41,6 +41,7 @@
 
 #include <linux/kernel_stat.h>
 #include <linux/mm.h>
+#include <linux/mmzone.h>
 #include <linux/mm_inline.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/coredump.h>
@@ -90,6 +91,8 @@
 #include "pgalloc-track.h"
 #include "internal.h"
 #include "swap.h"
+
+#include "demotion_hash.h"
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
 #warning Unfortunate NUMA and NUMA Balancing config, growing page-frame for last_cpupid.
@@ -4671,6 +4674,13 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	pte_t pte, old_pte;
 	int flags = 0;
 
+	struct mem_cgroup *memcg;
+    struct folio *folio;
+    struct lruvec *lruvec;
+	unsigned long min_seq;
+	int cur_min_seq;
+	int type;
+
 	/*
 	 * The "pte" at this point cannot be used safely without
 	 * validation through pte_unmap_same(). It's of NUMA type but
@@ -4734,10 +4744,30 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 		last_cpupid = page_cpupid_last(page);
 	target_nid = numa_migrate_prep(page, vma, vmf->address, page_nid,
 			&flags);
+	
+	// promote candidate
 	if (target_nid == NUMA_NO_NODE) {
 		put_page(page);
 		goto out_map;
 	}
+
+	if (!lookup_and_remove_demotion_history(page, &min_seq)) {
+		put_page(page);
+		goto out_map;
+	}
+
+	folio = page_folio(page);
+	type = folio_is_file_lru(folio);
+
+	rcu_read_lock();
+	memcg = folio_memcg_rcu(folio);
+    lruvec = mem_cgroup_lruvec(memcg, NODE_DATA(0));
+	cur_min_seq = READ_ONCE(lruvec->lrugen.min_seq[type]);
+	rcu_read_unlock();
+
+	// TODO: check whether recent reuse
+	// if (min_seq == cur_min_seq) {
+
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 	writable = false;
 
