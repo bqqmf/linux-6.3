@@ -1288,6 +1288,14 @@ const char * const vmstat_text[] = {
     "aging_func_fail",
     "aging_func_count",
     "pgdemote_count",
+    "pgrecent_repromote0",
+    "pgrecent_repromote1",
+    "pgrecent_repromote2",
+    "pgrecent_repromote3",
+    "pgpromote_hint0",
+    "pgpromote_hint1",
+    "pgpromote_hint2",
+    "pgpromote_hint3",
 
 #ifdef CONFIG_NUMA
 	"zone_reclaim_failed",

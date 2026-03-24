@@ -430,6 +430,7 @@ struct lru_gen_folio {
 
 	atomic_long_t demoted[MAX_NR_TIERS];
 	atomic_long_t promoted[MAX_NR_TIERS];
+	atomic_long_t recent_repromoted[MAX_NR_TIERS];
 #ifdef CONFIG_MEMCG
 	/* the memcg generation this lru_gen_folio belongs to */
 	u8 gen;
