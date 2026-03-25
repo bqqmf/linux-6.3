@@ -47,6 +47,8 @@
 #include <linux/psi.h>
 #include <linux/ratelimit.h>
 #include <linux/task_work.h>
+#include <linux/sysfs.h>
+#include <linux/kobject.h>
 
 #include <asm/switch_to.h>
 
@@ -57,7 +59,38 @@
 #include "autogroup.h"
 
 extern unsigned long global_repromote_ratio;
+unsigned long repromote_ratio_threshold = 100;
 
+static ssize_t show_repromote_ratio(struct kobject *kobj, struct kobj_attribute *attr,
+			       char *buf)
+{
+	return sprintf(buf, "%lu\n", repromote_ratio_threshold);
+}
+
+static ssize_t store_repromote_ratio(struct kobject *kobj, struct kobj_attribute *attr,
+			 const char *buf, size_t len)
+{
+	unsigned long new_threshold;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &new_threshold);
+	if (ret) {
+		return ret;
+	}
+
+	if (new_threshold < 1) {
+		new_threshold = 1;
+	} else if (new_threshold > 1000) {
+		new_threshold = 1000;
+	}
+
+	WRITE_ONCE(repromote_ratio_threshold, new_threshold);
+	return len;
+}
+
+struct kobj_attribute repromote_ratio_threshold_attr =
+	__ATTR(repromote_ratio_threshold, 0644, show_repromote_ratio,
+	       store_repromote_ratio);
 /*
  * Targeted preemption latency for CPU-bound tasks:
  *
@@ -2961,6 +2994,7 @@ static void task_numa_work(struct callback_head *work)
 	long pages, virtpages;
 	struct vma_iterator vmi;
 	unsigned long current_repromote_ratio;
+	unsigned long repromote_threshold;
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -2995,9 +3029,12 @@ static void task_numa_work(struct callback_head *work)
 	}
 
 	current_repromote_ratio = READ_ONCE(global_repromote_ratio);
+	repromote_threshold = READ_ONCE(repromote_ratio_threshold);
 
-	if (current_repromote_ratio > 100) {
-		p->numa_scan_period = p->numa_scan_period_max;
+	if (current_repromote_ratio > repromote_threshold) {
+		p->numa_scan_period = task_scan_max(p);
+	} else if (current_repromote_ratio < repromote_threshold) {
+		p->numa_scan_period = max_t(unsigned long, task_scan_start(p), (task_scan_max(p) * current_repromote_ratio) / 100);
 	}
 
 	next_scan = now + msecs_to_jiffies(p->numa_scan_period);

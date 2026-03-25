@@ -78,6 +78,7 @@
 #include <trace/events/vmscan.h>
 
 unsigned long global_repromote_ratio = 0;
+extern unsigned long repromote_ratio_threshold;
 
 DEFINE_PER_CPU(unsigned long, percpu_repromote_count);
 DEFINE_PER_CPU(unsigned long, percpu_hint_fault_count);
@@ -99,6 +100,8 @@ static void repromote_calc_handler(struct work_struct *work)
 	unsigned long delta_faults = 0;
 	unsigned long new_ratio = 0;
 	int cpu;
+	static unsigned long ewma_baseline = 100;
+	unsigned long dynamic_threshold;
 
 	for_each_online_cpu(cpu) {
 		current_repromote += per_cpu(percpu_repromote_count, cpu);
@@ -113,6 +116,16 @@ static void repromote_calc_handler(struct work_struct *work)
 	}
 
 	WRITE_ONCE(global_repromote_ratio, new_ratio);
+
+	ewma_baseline = ((ewma_baseline * 7) + new_ratio) / 8;
+	dynamic_threshold = ewma_baseline + 50;
+
+	if (dynamic_threshold < 50)
+		dynamic_threshold = 50;
+	else if (dynamic_threshold > 500)
+		dynamic_threshold = 500;
+
+	WRITE_ONCE(repromote_ratio_threshold, dynamic_threshold);
 
 	last_repromote_count = current_repromote;
 	last_hint_fault_count = current_faults;
@@ -5895,6 +5908,7 @@ static struct kobj_attribute repromote_ratio_attr =
 	__ATTR(global_repromote_ratio, 0644, show_repromote_ratio,
 	       store_repromote_ratio);
 extern struct kobj_attribute demotion_max_entries_attr;
+extern struct kobj_attribute repromote_ratio_threshold_attr;
 
 static struct kobject *repromote_kobj;
 
@@ -5915,6 +5929,11 @@ static int __init repromote_sysfs_init(void)
 	if (ret)
 		kobject_put(repromote_kobj);
 
+	ret = sysfs_create_file(repromote_kobj,
+				&repromote_ratio_threshold_attr.attr);
+	if (ret)
+		kobject_put(repromote_kobj);
+
 	return ret;
 }
 
@@ -5922,6 +5941,7 @@ static void __exit repromote_sysfs_exit(void)
 {
 	sysfs_remove_file(repromote_kobj, &repromote_ratio_attr.attr);
 	sysfs_remove_file(repromote_kobj, &demotion_max_entries_attr.attr);
+	sysfs_remove_file(repromote_kobj, &repromote_ratio_threshold_attr.attr);
 	kobject_put(repromote_kobj);
 }
 
