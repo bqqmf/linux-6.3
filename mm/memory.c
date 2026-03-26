@@ -4701,7 +4701,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	int flags = 0, refs, tier;
 	bool is_repromote = false;
 	unsigned long demote_min_seq = 0;
-    long nr_pages = 0;
+	long nr_pages = 0;
 
 	/*
 	 * The "pte" at this point cannot be used safely without
@@ -4769,7 +4769,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	folio_inc_refs(folio);
 	refs = folio_lru_refs(folio);
 	tier = lru_tier_from_refs(refs);
-    nr_pages = folio_nr_pages(folio);
+	nr_pages = folio_nr_pages(folio);
 
 	// check whether repromoted
 	if (lookup_demotion_history(page, &demote_min_seq)) {
@@ -4791,7 +4791,6 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 					&lrugen->recent_repromoted[tier]);
 			// tier 0~3
 			count_vm_event(PGRECENT_REPROMOTE0 + tier);
-			this_cpu_add(percpu_repromote_count, nr_pages);
 		}
 		rcu_read_unlock();
 	}
@@ -4816,7 +4815,9 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	if (migrate_misplaced_page(page, vma, target_nid)) {
 		page_nid = target_nid;
 		flags |= TNF_MIGRATED;
-		if (!is_repromote) {
+		if (is_repromote) {
+			this_cpu_add(percpu_repromote_count, nr_pages);
+        } else {
 			count_vm_event(PGPROMOTE_HINT0 + tier);
 		}
 		this_cpu_add(percpu_hint_fault_count, nr_pages);

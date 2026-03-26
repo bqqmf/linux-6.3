@@ -61,14 +61,15 @@
 extern unsigned long global_repromote_ratio;
 unsigned long repromote_ratio_threshold = 100;
 
-static ssize_t show_repromote_ratio(struct kobject *kobj, struct kobj_attribute *attr,
-			       char *buf)
+static ssize_t show_repromote_ratio(struct kobject *kobj,
+				    struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%lu\n", repromote_ratio_threshold);
 }
 
-static ssize_t store_repromote_ratio(struct kobject *kobj, struct kobj_attribute *attr,
-			 const char *buf, size_t len)
+static ssize_t store_repromote_ratio(struct kobject *kobj,
+				     struct kobj_attribute *attr,
+				     const char *buf, size_t len)
 {
 	unsigned long new_threshold;
 	int ret;
@@ -1616,7 +1617,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 		struct pglist_data *pgdat;
 		unsigned long rate_limit;
 		unsigned int latency, th, def_th;
-		unsigned long current_repromote_ratio;
+		unsigned long current_repromote_ratio, repromote_threshold;
 
 		pgdat = NODE_DATA(dst_nid);
 		if (pgdat_free_space_enough(pgdat)) {
@@ -1626,8 +1627,9 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 		}
 
 		current_repromote_ratio = READ_ONCE(global_repromote_ratio);
-		// 10%
-		if (current_repromote_ratio >= 100) {
+		repromote_threshold = READ_ONCE(repromote_ratio_threshold);
+
+		if (current_repromote_ratio >= repromote_threshold) {
 			return false;
 		}
 
@@ -3034,7 +3036,9 @@ static void task_numa_work(struct callback_head *work)
 	if (current_repromote_ratio > repromote_threshold) {
 		p->numa_scan_period = task_scan_max(p);
 	} else if (current_repromote_ratio < repromote_threshold) {
-		p->numa_scan_period = max_t(unsigned long, task_scan_start(p), (task_scan_max(p) * current_repromote_ratio) / 100);
+		p->numa_scan_period = max_t(
+			unsigned long, task_scan_start(p),
+			(task_scan_max(p) * current_repromote_ratio) / 100);
 	}
 
 	next_scan = now + msecs_to_jiffies(p->numa_scan_period);

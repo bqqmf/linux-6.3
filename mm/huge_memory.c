@@ -1611,7 +1611,6 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 					&lrugen->recent_repromoted[tier]);
 			// tier 0~3
 			count_vm_event(PGRECENT_REPROMOTE0 + tier);
-			this_cpu_add(percpu_repromote_count, nr_pages);
 		}
 		rcu_read_unlock();
 	}
@@ -1635,7 +1634,9 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 	if (migrated) {
 		flags |= TNF_MIGRATED;
 		page_nid = target_nid;
-		if (!is_repromote) {
+		if (is_repromote) {
+			this_cpu_add(percpu_repromote_count, nr_pages);
+        } else {
 			count_vm_event(PGPROMOTE_HINT0 + tier);
 		}
 		this_cpu_add(percpu_hint_fault_count, nr_pages);
