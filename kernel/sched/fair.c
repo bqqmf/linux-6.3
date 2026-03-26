@@ -1629,15 +1629,9 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 		current_repromote_ratio = READ_ONCE(global_repromote_ratio);
 		repromote_threshold = READ_ONCE(repromote_ratio_threshold);
 
-		if (current_repromote_ratio >= repromote_threshold) {
-			return false;
-		}
-
 		def_th = sysctl_numa_balancing_hot_threshold;
 		rate_limit = sysctl_numa_balancing_promote_rate_limit
 			     << (20 - PAGE_SHIFT);
-		rate_limit =
-			(rate_limit * (1000 - current_repromote_ratio)) / 1000;
 		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th);
 
 		th = pgdat->nbp_threshold ?: def_th;
@@ -2995,8 +2989,6 @@ static void task_numa_work(struct callback_head *work)
 	unsigned long nr_pte_updates = 0;
 	long pages, virtpages;
 	struct vma_iterator vmi;
-	unsigned long current_repromote_ratio;
-	unsigned long repromote_threshold;
 
 	SCHED_WARN_ON(p != container_of(work, struct task_struct, numa_work));
 
@@ -3028,17 +3020,6 @@ static void task_numa_work(struct callback_head *work)
 	if (p->numa_scan_period == 0) {
 		p->numa_scan_period_max = task_scan_max(p);
 		p->numa_scan_period = task_scan_start(p);
-	}
-
-	current_repromote_ratio = READ_ONCE(global_repromote_ratio);
-	repromote_threshold = READ_ONCE(repromote_ratio_threshold);
-
-	if (current_repromote_ratio > repromote_threshold) {
-		p->numa_scan_period = task_scan_max(p);
-	} else if (current_repromote_ratio < repromote_threshold) {
-		p->numa_scan_period = max_t(
-			unsigned long, task_scan_start(p),
-			(task_scan_max(p) * current_repromote_ratio) / 100);
 	}
 
 	next_scan = now + msecs_to_jiffies(p->numa_scan_period);

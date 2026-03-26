@@ -4795,12 +4795,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 		rcu_read_unlock();
 	}
 
-	if (is_repromote)
-		target_nid = numa_migrate_prep(page, vma, vmf->address,
-					       page_nid, &flags, 1);
-	else
-		target_nid = numa_migrate_prep(page, vma, vmf->address,
-					       page_nid, &flags, 0);
+	target_nid = numa_migrate_prep(page, vma, vmf->address, page_nid, &flags, 0);
 
 	// promote candidate
 	if (target_nid == NUMA_NO_NODE) {

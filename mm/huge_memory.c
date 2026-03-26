@@ -1549,7 +1549,7 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 	int target_nid, last_cpupid = (-1 & LAST_CPUPID_MASK);
 	bool migrated = false, writable = false, is_repromote = false;
 	int flags = 0, refs, tier;
-    long nr_pages = 0;
+	long nr_pages = 0;
 	unsigned long demote_min_seq = 0;
 
 	vmf->ptl = pmd_lock(vma->vm_mm, vmf->pmd);
@@ -1589,7 +1589,7 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 	folio_inc_refs(folio);
 	refs = folio_lru_refs(folio);
 	tier = lru_tier_from_refs(refs);
-    nr_pages = folio_nr_pages(folio);
+	nr_pages = folio_nr_pages(folio);
 
 	// check whether repromoted
 	if (lookup_demotion_history(page, &demote_min_seq)) {
@@ -1615,12 +1615,7 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 		rcu_read_unlock();
 	}
 
-	if (is_repromote)
-		target_nid = numa_migrate_prep(page, vma, haddr, page_nid,
-					       &flags, 1);
-	else
-		target_nid = numa_migrate_prep(page, vma, haddr, page_nid,
-					       &flags, 0);
+	target_nid = numa_migrate_prep(page, vma, haddr, page_nid, &flags, 0);
 
 	if (target_nid == NUMA_NO_NODE) {
 		put_page(page);
@@ -1636,7 +1631,7 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf)
 		page_nid = target_nid;
 		if (is_repromote) {
 			this_cpu_add(percpu_repromote_count, nr_pages);
-        } else {
+		} else {
 			count_vm_event(PGPROMOTE_HINT0 + tier);
 		}
 		this_cpu_add(percpu_hint_fault_count, nr_pages);
