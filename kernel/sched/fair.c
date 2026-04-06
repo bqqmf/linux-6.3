@@ -1615,7 +1615,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 	if (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING &&
 	    !node_is_toptier(src_nid)) {
 		struct pglist_data *pgdat;
-		unsigned long rate_limit;
+		unsigned long rate_limit, orig_rate_limit;
 		unsigned int latency, th, def_th;
 		unsigned long current_repromote_ratio, repromote_threshold;
 
@@ -1629,15 +1629,27 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 		current_repromote_ratio = READ_ONCE(global_repromote_ratio);
 		repromote_threshold = READ_ONCE(repromote_ratio_threshold);
 
-		if (current_repromote_ratio >= repromote_threshold) {
-			return false;
-		}
 
 		def_th = sysctl_numa_balancing_hot_threshold;
-		rate_limit = sysctl_numa_balancing_promote_rate_limit
-			     << (20 - PAGE_SHIFT);
-		rate_limit =
-			(rate_limit * (1000 - current_repromote_ratio)) / 1000;
+		orig_rate_limit = sysctl_numa_balancing_promote_rate_limit << (20 - PAGE_SHIFT);
+        
+        // when not thrashing, increase migration
+		if (current_repromote_ratio < (repromote_threshold / 4)) {
+		    rate_limit = orig_rate_limit * 2;
+        } else {
+            rate_limit = orig_rate_limit;
+            rate_limit = (rate_limit * (1000 - current_repromote_ratio)) / 1000;
+
+            // when thrashing, cut in half
+            if (current_repromote_ratio >= repromote_threshold) {
+                rate_limit >>= 1;
+            }
+            
+            // at least guarantee 25% of rate_limit
+            if (rate_limit < (orig_rate_limit / 4)) {
+                rate_limit = orig_rate_limit / 4;
+            }
+        }
 		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th);
 
 		th = pgdat->nbp_threshold ?: def_th;
