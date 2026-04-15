@@ -1633,23 +1633,19 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 		def_th = sysctl_numa_balancing_hot_threshold;
 		orig_rate_limit = sysctl_numa_balancing_promote_rate_limit << (20 - PAGE_SHIFT);
         
-        // when not thrashing, increase migration
-		if (current_repromote_ratio < (repromote_threshold / 4)) {
-		    rate_limit = orig_rate_limit * 2;
-        } else {
-            rate_limit = orig_rate_limit;
-            rate_limit = (rate_limit * (1000 - current_repromote_ratio)) / 1000;
+        // if repromo ratio 0 ~ 1/4 of threshold, double limit
+		if (current_repromote_ratio < (repromote_threshold >> 2)) {
+		    rate_limit = orig_rate_limit << 1;
+        } else if (current_repromote_ratio >= repromote_threshold) { // if thrashing, 1/8
+            rate_limit = orig_rate_limit >> 3; // original's 1/8
+        } else { // if 1/4 ~ threshold, reduce limit and guarantee at least 25% of origin_limit 
+            rate_limit = (orig_rate_limit * (1000 - current_repromote_ratio)) / 1000;
 
-            // when thrashing, cut in half
-            if (current_repromote_ratio >= repromote_threshold) {
-                rate_limit >>= 1;
-            }
-            
-            // at least guarantee 25% of rate_limit
-            if (rate_limit < (orig_rate_limit / 4)) {
-                rate_limit = orig_rate_limit / 4;
+            if (rate_limit < (orig_rate_limit >> 2)) {
+                rate_limit = orig_rate_limit >> 2;
             }
         }
+        
 		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th);
 
 		th = pgdat->nbp_threshold ?: def_th;
