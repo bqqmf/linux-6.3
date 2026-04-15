@@ -3043,10 +3043,16 @@ static void task_numa_work(struct callback_head *work)
 
 	if (current_repromote_ratio > repromote_threshold) {
 		p->numa_scan_period = task_scan_max(p);
-	} else if (current_repromote_ratio < repromote_threshold) {
-		p->numa_scan_period = max_t(
-			unsigned long, task_scan_start(p),
-			(task_scan_max(p) * current_repromote_ratio) / 100);
+	} else {
+        unsigned long current_period = p->numa_scan_period;
+        unsigned long min_period  = task_scan_start(p);
+        unsigned long step  = task_scan_max(p) / 10;
+
+        if (current_period > min_period + step) {
+            p->numa_scan_period = current_period - step;
+        } else {
+            p->numa_scan_period = min_period;
+        }
 	}
 
 	next_scan = now + msecs_to_jiffies(p->numa_scan_period);
