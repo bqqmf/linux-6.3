@@ -86,6 +86,7 @@ DEFINE_PER_CPU(unsigned long, percpu_hint_fault_count);
 EXPORT_PER_CPU_SYMBOL(percpu_repromote_count);
 EXPORT_PER_CPU_SYMBOL(percpu_hint_fault_count);
 
+#define MIN_VALID_FAULTS 10
 static unsigned long last_repromote_count = 0;
 static unsigned long last_hint_fault_count = 0;
 
@@ -99,6 +100,7 @@ static void repromote_calc_handler(struct work_struct *work)
 	unsigned long delta_repromote = 0;
 	unsigned long delta_faults = 0;
 	unsigned long new_ratio = 0;
+    unsigned long orig_rate_limit, rate_limit, max_pages, min_pages;
 	int cpu;
 	static unsigned long ewma_baseline = 100;
 	unsigned long dynamic_threshold;
@@ -111,7 +113,7 @@ static void repromote_calc_handler(struct work_struct *work)
 	delta_repromote = current_repromote - last_repromote_count;
 	delta_faults = current_faults - last_hint_fault_count;
 
-	if (delta_faults > 0) {
+	if (delta_faults >= MIN_VALID_FAULTS) {
 		new_ratio = delta_repromote * 1000 / delta_faults;
 	}
 
@@ -126,6 +128,27 @@ static void repromote_calc_handler(struct work_struct *work)
 		dynamic_threshold = 500;
 
 	WRITE_ONCE(repromote_ratio_threshold, dynamic_threshold);
+
+    orig_rate_limit = READ_ONCE(sysctl_numa_balancing_promote_rate_limit) << (20 - PAGE_SHIFT);
+    rate_limit = orig_rate_limit;
+    min_pages = 1UL << (20 - PAGE_SHIFT);
+    max_pages = 65536UL << (20 - PAGE_SHIFT);
+
+    if (new_ratio < (dynamic_threshold >> 2)) {
+        rate_limit = orig_rate_limit << 1;
+    } else if (new_ratio >= dynamic_threshold) {
+        rate_limit = orig_rate_limit >> 1;
+    } else {
+        rate_limit = (orig_rate_limit * (1000 - new_ratio)) / 1000;
+        if (rate_limit < (orig_rate_limit >> 2)) {
+            rate_limit = orig_rate_limit >> 2;
+        }
+    }
+
+    if (rate_limit < min_pages) rate_limit = min_pages;
+    if (rate_limit > max_pages) rate_limit = max_pages;
+    
+    WRITE_ONCE(sysctl_numa_balancing_promote_rate_limit, rate_limit >> (20 - PAGE_SHIFT));
 
 	last_repromote_count = current_repromote;
 	last_hint_fault_count = current_faults;
@@ -5908,6 +5931,7 @@ static struct kobj_attribute repromote_ratio_attr =
 	__ATTR(global_repromote_ratio, 0644, show_repromote_ratio,
 	       store_repromote_ratio);
 extern struct kobj_attribute demotion_max_entries_attr;
+extern struct kobj_attribute demotion_sample_rate_attr;
 extern struct kobj_attribute repromote_ratio_threshold_attr;
 
 static struct kobject *repromote_kobj;
@@ -5934,6 +5958,11 @@ static int __init repromote_sysfs_init(void)
 	if (ret)
 		kobject_put(repromote_kobj);
 
+	ret = sysfs_create_file(repromote_kobj,
+				&demotion_sample_rate_attr.attr);
+	if (ret)
+		kobject_put(repromote_kobj);
+
 	return ret;
 }
 
@@ -5941,6 +5970,7 @@ static void __exit repromote_sysfs_exit(void)
 {
 	sysfs_remove_file(repromote_kobj, &repromote_ratio_attr.attr);
 	sysfs_remove_file(repromote_kobj, &demotion_max_entries_attr.attr);
+	sysfs_remove_file(repromote_kobj, &demotion_sample_rate_attr.attr);
 	sysfs_remove_file(repromote_kobj, &repromote_ratio_threshold_attr.attr);
 	kobject_put(repromote_kobj);
 }

@@ -29,8 +29,9 @@ unsigned long demotion_max_entries = (1UL << (DEMOTION_HASH_BITS + 2));
 unsigned long demotion_high_watermark =
 	((1UL << (DEMOTION_HASH_BITS + 2)) * 3 / 4);
 
-// 1/8 sample rate
-#define DEMOTION_SAMPLE_RATE 8
+// sample rate
+unsigned long demotion_sample_rate = 4;
+
 static atomic_t demotion_sample_counter = ATOMIC_INIT(0);
 
 static void shrink_demotion_history(void);
@@ -81,15 +82,12 @@ void record_demotion_history(struct folio *folio, struct lru_gen_folio *lrugen)
 	struct demotion_history *new_entry;
 	unsigned long hash_key;
 	int type, depth = 0;
+	unsigned long current_rate = READ_ONCE(demotion_sample_rate);
 
-	if (atomic_inc_return(&demotion_sample_counter) %
-		    DEMOTION_SAMPLE_RATE !=
-	    0)
+	if (atomic_inc_return(&demotion_sample_counter) % current_rate != 0)
 		return;
 
-	if (atomic_read(&demotion_entries) >=
-	    READ_ONCE(demotion_high_watermark))
-		shrink_demotion_history();
+	if (atomic_read(&demotion_entries) >= READ_ONCE(demotion_high_watermark)) shrink_demotion_history();
 
 	new_entry = kmalloc(sizeof(*new_entry), GFP_NOWAIT | __GFP_NOWARN);
 	if (!new_entry)
@@ -257,3 +255,30 @@ static void shrink_demotion_history(void)
 
 	spin_unlock(&demotion_htable_lock);
 }
+
+static ssize_t show_demotion_sample_rate(struct kobject *kobj,
+					 struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", READ_ONCE(demotion_sample_rate));
+}
+
+static ssize_t store_demotion_sample_rate(struct kobject *kobj,
+					  struct kobj_attribute *attr,
+					  const char *buf, size_t len)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &val);
+	if (ret)
+		return ret;
+
+	if (val == 0)
+		val = 1;
+	WRITE_ONCE(demotion_sample_rate, val);
+	return len;
+}
+
+struct kobj_attribute demotion_sample_rate_attr =
+	__ATTR(demotion_sample_rate, 0644, show_demotion_sample_rate,
+	       store_demotion_sample_rate);

@@ -60,6 +60,7 @@
 
 extern unsigned long global_repromote_ratio;
 unsigned long repromote_ratio_threshold = 100;
+unsigned long last_rate_update = 0;
 
 static ssize_t show_repromote_ratio(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *buf)
@@ -216,7 +217,7 @@ static unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 
 #ifdef CONFIG_NUMA_BALANCING
 /* Restrict the NUMA promotion throughput (MB/s) for each target node. */
-static unsigned int sysctl_numa_balancing_promote_rate_limit = 65536;
+unsigned int sysctl_numa_balancing_promote_rate_limit = 65536;
 #endif
 
 #ifdef CONFIG_SYSCTL
@@ -1615,9 +1616,8 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 	if (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING &&
 	    !node_is_toptier(src_nid)) {
 		struct pglist_data *pgdat;
-		unsigned long rate_limit, orig_rate_limit;
+        unsigned long rate_limit;
 		unsigned int latency, th, def_th;
-		unsigned long current_repromote_ratio, repromote_threshold;
 
 		pgdat = NODE_DATA(dst_nid);
 		if (pgdat_free_space_enough(pgdat)) {
@@ -1626,26 +1626,8 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page *page,
 			return true;
 		}
 
-		current_repromote_ratio = READ_ONCE(global_repromote_ratio);
-		repromote_threshold = READ_ONCE(repromote_ratio_threshold);
-
-
 		def_th = sysctl_numa_balancing_hot_threshold;
-		orig_rate_limit = sysctl_numa_balancing_promote_rate_limit << (20 - PAGE_SHIFT);
-        
-        // if repromo ratio 0 ~ 1/4 of threshold, double limit
-		if (current_repromote_ratio < (repromote_threshold >> 2)) {
-		    rate_limit = orig_rate_limit << 1;
-        } else if (current_repromote_ratio >= repromote_threshold) { // if thrashing, 1/8
-            rate_limit = orig_rate_limit >> 3; // original's 1/8
-        } else { // if 1/4 ~ threshold, reduce limit and guarantee at least 25% of origin_limit 
-            rate_limit = (orig_rate_limit * (1000 - current_repromote_ratio)) / 1000;
-
-            if (rate_limit < (orig_rate_limit >> 2)) {
-                rate_limit = orig_rate_limit >> 2;
-            }
-        }
-        
+        rate_limit = sysctl_numa_balancing_promote_rate_limit << (20 - PAGE_SHIFT);
 		numa_promotion_adjust_threshold(pgdat, rate_limit, def_th);
 
 		th = pgdat->nbp_threshold ?: def_th;
@@ -3043,16 +3025,6 @@ static void task_numa_work(struct callback_head *work)
 
 	if (current_repromote_ratio > repromote_threshold) {
 		p->numa_scan_period = task_scan_max(p);
-	} else {
-        unsigned long current_period = p->numa_scan_period;
-        unsigned long min_period  = task_scan_start(p);
-        unsigned long step  = task_scan_max(p) / 10;
-
-        if (current_period > min_period + step) {
-            p->numa_scan_period = current_period - step;
-        } else {
-            p->numa_scan_period = min_period;
-        }
 	}
 
 	next_scan = now + msecs_to_jiffies(p->numa_scan_period);
